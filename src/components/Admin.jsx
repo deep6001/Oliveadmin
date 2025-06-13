@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs ,onSnapshot} from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import {
     Users,
@@ -26,52 +26,48 @@ function BuyerData() {
 
 
    useEffect(() => {
-  const fetchData = async () => {
-    try {
-      const buyerSnapshot = await getDocs(collection(db, 'BuyerDetails'));
-      const buyersData = await Promise.all(
-        buyerSnapshot.docs.map(async (buyerDoc) => {
-          const buyerId = buyerDoc.id;
-          const buyerInfo = buyerDoc.data().BuyerInfo;
+  const unsubscribe = onSnapshot(collection(db, 'BuyerDetails'), async (buyerSnapshot) => {
+    const buyersData = await Promise.all(
+      buyerSnapshot.docs.map(async (buyerDoc) => {
+        const buyerId = buyerDoc.id;
+        const buyerInfo = buyerDoc.data().BuyerInfo;
 
-          const productSnapshot = await getDocs(
-            collection(db, 'BuyerDetails', buyerId, 'ProductDetails')
-          );
+        const productSnapshot = await getDocs(
+          collection(db, 'BuyerDetails', buyerId, 'ProductDetails')
+        );
 
-          const products = productSnapshot.docs.map((doc) => {
-            const productInfo = doc.data().ProductInfo;
-            const productCategories = Object.entries(productInfo || {}).map(([categoryName, sizesObj]) => {
-              const sizes = Object.entries(sizesObj).map(([sizeLabel, sizeDetails]) => ({
-                sizeLabel,
-                ...sizeDetails,
-              }));
-              return {
-                categoryName,
-                sizes,
-              };
-            });
-
+        const products = productSnapshot.docs.map((doc) => {
+          const productInfo = doc.data().ProductInfo;
+          const productCategories = Object.entries(productInfo || {}).map(([categoryName, sizesObj]) => {
+            const sizes = Object.entries(sizesObj).map(([sizeLabel, sizeDetails]) => ({
+              sizeLabel,
+              ...sizeDetails,
+            }));
             return {
-              id: doc.id,
-              productCategories,
+              categoryName,
+              sizes,
             };
           });
 
           return {
-            id: buyerId,
-            buyerInfo,
-            products,
+            id: doc.id,
+            productCategories,
           };
-        })
-      );
+        });
 
-      setBuyers(buyersData);
-    } catch (error) {
-      console.error('Error fetching buyers:', error);
-    }
-  };
+        return {
+          id: buyerId,
+          buyerInfo,
+          products,
+        };
+      })
+    );
 
-  fetchData();
+    setBuyers(buyersData);
+  });
+
+  // 🔁 Clean up listener on unmount
+  return () => unsubscribe();
 }, []);
 
 

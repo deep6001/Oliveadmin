@@ -1,114 +1,183 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs ,onSnapshot} from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
+import jsPDF  from 'jspdf'
 import {
-    Users,
-    Building2,
-    Mail,
-    Phone,
-    MapPin,
-    FileText,
-    Package,
-    Ruler,
-    Hash,
-    DollarSign,
-    Search,
-    Filter,
-    Download,
-    Eye,
-    ChevronRight
+  Users,
+  Building2,
+  Mail,
+  Phone,
+  MapPin,
+  FileText,
+  Package,
+  Ruler,
+  Hash,
+  DollarSign,
+  Search,
+  Filter,
+  Download,
+  Eye,
+  ChevronRight
 } from 'lucide-react';
+import autoTable from 'jspdf-autotable';
 
 function BuyerData() {
-    const [buyers, setBuyers] = useState([]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedBuyer, setSelectedBuyer] = useState(null);
+  const [buyers, setBuyers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBuyer, setSelectedBuyer] = useState(null);
 
 
-   useEffect(() => {
-  const unsubscribe = onSnapshot(collection(db, 'BuyerDetails'), async (buyerSnapshot) => {
-    const buyersData = await Promise.all(
-      buyerSnapshot.docs.map(async (buyerDoc) => {
-        const buyerId = buyerDoc.id;
-        const buyerInfo = buyerDoc.data().BuyerInfo;
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'BuyerDetails'), async (buyerSnapshot) => {
+      const buyersData = await Promise.all(
+        buyerSnapshot.docs.map(async (buyerDoc) => {
+          const buyerId = buyerDoc.id;
+          const buyerInfo = buyerDoc.data().BuyerInfo;
 
-        const productSnapshot = await getDocs(
-          collection(db, 'BuyerDetails', buyerId, 'ProductDetails')
-        );
+          const productSnapshot = await getDocs(
+            collection(db, 'BuyerDetails', buyerId, 'ProductDetails')
+          );
 
-        const products = productSnapshot.docs.map((doc) => {
-          const productInfo = doc.data().ProductInfo;
-          const productCategories = Object.entries(productInfo || {}).map(([categoryName, sizesObj]) => {
-            const sizes = Object.entries(sizesObj).map(([sizeLabel, sizeDetails]) => ({
-              sizeLabel,
-              ...sizeDetails,
-            }));
+          const products = productSnapshot.docs.map((doc) => {
+            const productInfo = doc.data().ProductInfo;
+            const productCategories = Object.entries(productInfo || {}).map(([categoryName, sizesObj]) => {
+              const sizes = Object.entries(sizesObj).map(([sizeLabel, sizeDetails]) => ({
+                sizeLabel,
+                ...sizeDetails,
+              }));
+              return {
+                categoryName,
+                sizes,
+              };
+            });
+
             return {
-              categoryName,
-              sizes,
+              id: doc.id,
+              productCategories,
             };
           });
 
           return {
-            id: doc.id,
-            productCategories,
+            id: buyerId,
+            buyerInfo,
+            products,
           };
-        });
+        })
+      );
 
-        return {
-          id: buyerId,
-          buyerInfo,
-          products,
-        };
-      })
-    );
+      setBuyers(buyersData);
+    });
 
-    setBuyers(buyersData);
-  });
-
-  // 🔁 Clean up listener on unmount
-  return () => unsubscribe();
-}, []);
+    // 🔁 Clean up listener on unmount
+    return () => unsubscribe();
+  }, []);
 
 
-    console.log(buyers)
+  console.log(buyers)
 
 
-    const filteredBuyers = buyers.filter((buyer) =>
-  buyer.buyerInfo?.dealerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-  buyer.buyerInfo?.firmName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-  buyer.buyerInfo?.emailId.toLowerCase().includes(searchTerm.toLowerCase())
-);
+  const filteredBuyers = buyers.filter((buyer) =>
+    buyer.buyerInfo?.dealerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    buyer.buyerInfo?.firmName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    buyer.buyerInfo?.emailId.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
 
-    const getTotalAmount = (buyer) => {
-  return buyer.products.reduce((total, product) => {
-    return total + product.productCategories.reduce((catTotal, category) => {
-      return catTotal + category.sizes.reduce((sizeTotal, size) => sizeTotal + (size.total || 0), 0);
+  const getTotalAmount = (buyer) => {
+    return buyer.products.reduce((total, product) => {
+      return total + product.productCategories.reduce((catTotal, category) => {
+        return catTotal + category.sizes.reduce((sizeTotal, size) => sizeTotal + (size.total || 0), 0);
+      }, 0);
     }, 0);
-  }, 0);
-};
+  };
 
 
-   const getTotalProducts = (buyer) => {
-  return buyer.products.reduce((total, product) => {
-    return total + product.productCategories.reduce((catTotal, category) => {
-      return catTotal + category.sizes.length;
+  const getTotalProducts = (buyer) => {
+    return buyer.products.reduce((total, product) => {
+      return total + product.productCategories.reduce((catTotal, category) => {
+        return catTotal + category.sizes.length;
+      }, 0);
     }, 0);
-  }, 0);
-};
+  };
 
 
   const getTotalQuantity = (buyer) => {
-  return buyer.products.reduce((total, product) => {
-    return total + product.productCategories.reduce((catTotal, category) => {
-      return catTotal + category.sizes.reduce((sizeTotal, size) => sizeTotal + (size.quantity || 0), 0);
+    return buyer.products.reduce((total, product) => {
+      return total + product.productCategories.reduce((catTotal, category) => {
+        return catTotal + category.sizes.reduce((sizeTotal, size) => sizeTotal + (size.quantity || 0), 0);
+      }, 0);
     }, 0);
-  }, 0);
+  };
+
+ const generatePDF = () => {
+  console.log('Generating PDF report...');
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text('Buyer Report', 14, 20);
+
+  buyers.forEach((buyer, buyerIndex) => {
+    if (buyerIndex > 0) doc.addPage();
+
+    let startY = 30;
+
+    doc.setFontSize(12);
+    doc.text(`Dealer: ${buyer.buyerInfo?.dealerName || ''}`, 14, startY);
+    doc.text(`Firm: ${buyer.buyerInfo?.firmName || ''}`, 14, startY + 6);
+    doc.text(`Email: ${buyer.buyerInfo?.emailId || ''}`, 14, startY + 12);
+    doc.text(`Contact: ${buyer.buyerInfo?.contactNumber || ''}`, 14, startY + 18);
+    doc.text(`GST: ${buyer.buyerInfo?.gstNo || ''}`, 14, startY + 24);
+
+    const productRows = [];
+    let totalPrice = 0;
+
+    buyer.products.forEach((product) => {
+      product.productCategories.forEach((category) => {
+        category.sizes.forEach((size) => {
+          const qty = size.quantity || 0;
+          const price = size.price || 0;
+          const total = size.total || qty * price;
+          totalPrice += total;
+
+          productRows.push([
+            category.categoryName,
+            size.sizeLabel || size.size || '',
+            qty,
+            price,
+            total,
+          ]);
+        });
+      });
+    });
+
+    // Add total row
+    if (productRows.length > 0) {
+      productRows.push([
+        { content: 'Total', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: totalPrice.toFixed(2), styles: { fontStyle: 'bold' } },
+      ]);
+    } else {
+      productRows.push([
+        { content: 'No product data available', colSpan: 5, styles: { halign: 'center' } },
+      ]);
+    }
+
+    autoTable(doc, {
+      startY: startY + 30,
+      head: [['Category', 'Size', 'Quantity', 'Price', 'Total']],
+      body: productRows,
+      theme: 'striped',
+      headStyles: { fillColor: [22, 160, 133] },
+      styles: { fontSize: 10 },
+    });
+  });
+
+  doc.save('BuyerReport.pdf');
 };
 
-    return (
-        <div className="min-h-screen bg-gray-50">
+
+
+  return (
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -122,6 +191,12 @@ function BuyerData() {
                 <p className="text-sm text-gray-600">Manage buyers and their product orders</p>
               </div>
             </div>
+            <button
+              onClick={generatePDF}
+              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md"
+            >
+              Generate Report
+            </button>
           </div>
         </div>
       </div>
@@ -340,7 +415,7 @@ function BuyerData() {
         )}
       </div>
     </div>
-    );
+  );
 
 
 }
